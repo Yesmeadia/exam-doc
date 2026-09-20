@@ -1047,10 +1047,17 @@ class ClassWiseStatementService
 
         $currCol = 5;
         foreach ($data['columns'] as $col) {
-            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol);
-            $sheet->setCellValue($colLetter . $headerRow1, $col['title']);
-            $sheet->setCellValue($colLetter . $headerRow2, ((int) $col['maximum_marks']) . ' / ' . ((int) $col['pass_marks']));
-            $currCol++;
+            $col1 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol);
+            $col2 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol + 1);
+            $col3 = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol + 2);
+            // Subject title spanning 3 columns
+            $sheet->setCellValue($col1 . $headerRow1, $col['title']);
+            $sheet->mergeCells("{$col1}{$headerRow1}:{$col3}{$headerRow1}");
+            // Sub-headers row 2
+            $sheet->setCellValue($col1 . $headerRow2, 'Marks');
+            $sheet->setCellValue($col2 . $headerRow2, '%');
+            $sheet->setCellValue($col3 . $headerRow2, 'Gr.');
+            $currCol += 3;
         }
 
         // Summary Headers
@@ -1095,27 +1102,39 @@ class ClassWiseStatementService
 
             $colIdx = 5;
             foreach ($data['columns'] as $colKey => $col) {
-                $subCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx);
+                $marksCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx);
+                $pctCol2  = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 1);
+                $grCol    = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx + 2);
                 $colData = $st['columns'][$colKey] ?? null;
 
-                $val = '—';
-                if ($colData) {
-                    $val = $colData['display'];
-                    if (!empty($colData['percentage']) && $colData['status'] === 'entered') {
-                        $val .= ' (' . $colData['percentage'] . '%';
-                        if (!empty($colData['grade']) && $colData['grade'] !== '—') {
-                            $val .= ' ' . $colData['grade'];
-                        }
-                        $val .= ')';
+                // Marks
+                $marksVal = '—';
+                $pctVal   = '—';
+                $grVal    = '—';
+                if ($colData && $colData['status'] === 'entered') {
+                    $marksVal = $colData['display'];
+                    if (!empty($colData['percentage'])) {
+                        $pctVal = $colData['percentage'];
                     }
-                    if (!empty($colData['tag']) && $colData['status'] !== 'not_applicable' && $colData['display'] !== '—') {
-                        $val .= ' [' . $colData['tag'] . ']';
+                    if (!empty($colData['grade']) && $colData['grade'] !== '—') {
+                        $grVal = $colData['grade'];
                     }
+                    if (!empty($colData['tag'])) {
+                        $grVal .= ($grVal !== '—' ? ' ' : '') . '[' . $colData['tag'] . ']';
+                    }
+                } elseif ($colData && $colData['status'] === 'absent') {
+                    $marksVal = 'AB';
+                    $pctVal   = 'AB';
+                    $grVal    = 'AB';
                 }
 
-                $sheet->setCellValue($subCol . $currentRow, $val);
-                $sheet->getStyle($subCol . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $colIdx++;
+                $sheet->setCellValue($marksCol . $currentRow, $marksVal);
+                $sheet->getStyle($marksCol . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->setCellValue($pctCol2 . $currentRow, $pctVal);
+                $sheet->getStyle($pctCol2 . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->setCellValue($grCol . $currentRow, $grVal);
+                $sheet->getStyle($grCol . $currentRow)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $colIdx += 3;
             }
 
             $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx++) . $currentRow, $st['has_appeared'] ? $st['total_obtained'] : '—');

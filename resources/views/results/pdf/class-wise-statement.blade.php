@@ -302,7 +302,7 @@
                     <th rowspan="2" style="width: 30px;">Sec</th>
                 @endif
                 @foreach($columns as $col)
-                    <th style="min-width: 42px;">{{ $col['short_title'] ?? $col['title'] }}</th>
+                    <th colspan="3" style="min-width: 54px;">{{ $col['short_title'] ?? $col['title'] }}</th>
                 @endforeach
                 <th rowspan="2" style="width: 40px;" class="th-result">Total</th>
                 <th rowspan="2" style="width: 35px;" class="th-result">Max</th>
@@ -312,7 +312,9 @@
             </tr>
             <tr>
                 @foreach($columns as $col)
-                    <th class="sub-th">{{ $col['sub_header'] }}</th>
+                    <th class="sub-th">Marks</th>
+                    <th class="sub-th">%</th>
+                    <th class="sub-th">Gr.</th>
                 @endforeach
             </tr>
         </thead>
@@ -332,31 +334,41 @@
                             $display = $colData ? $colData['display'] : '—';
                             $status = $colData ? $colData['status'] : 'pending';
                             $isPassed = $colData ? $colData['is_passed'] : false;
-                            $tag = $colData ? $colData['tag'] : null;
+                            $tag = $colData ? ($colData['tag'] ?? null) : null;
+                            $pct = ($colData && isset($colData['percentage'])) ? $colData['percentage'] : null;
+                            $gr  = ($colData && !empty($colData['grade']) && $colData['grade'] !== '—') ? $colData['grade'] : null;
                         @endphp
+                        {{-- MARKS --}}
                         <td class="text-center">
                             @if($status === 'absent')
                                 <span class="mark-ab">AB</span>
-                                @if($tag)
-                                    <span style="font-size: 6.5px; color: #dc2626;">({{ $tag }})</span>
-                                @endif
                             @elseif($status === 'entered')
-                                <span class="{{ $isPassed ? 'mark-pass' : 'mark-fail' }}">
-                                    {{ $display }}
-                                </span>
-                                @if(isset($colData['percentage']) && $colData['percentage'] !== null)
-                                    <span style="font-size: 6px; color: #64748b;">({{ $colData['percentage'] }}%@if(!empty($colData['grade']) && $colData['grade'] !== '—')<b style="color: #334155; margin-left: 1px;">{{ $colData['grade'] }}</b>@endif)</span>
-                                @endif
-                                @if($tag)
-                                    <span style="font-size: 6.5px; color: #64748b;">({{ $tag }})</span>
-                                @endif
+                                <span class="{{ $isPassed ? 'mark-pass' : 'mark-fail' }}">{{ $display }}</span>
                             @elseif($status === 'not_applicable')
                                 <span style="color: #94a3b8; font-size: 7px;">—</span>
                             @else
                                 <span style="color: #94a3b8;">—</span>
-                                @if($tag)
-                                    <span style="font-size: 6.5px; color: #94a3b8;">({{ $tag }})</span>
-                                @endif
+                            @endif
+                        </td>
+                        {{-- % --}}
+                        <td class="text-center" style="font-size: 7px;">
+                            @if($status === 'entered' && $pct !== null)
+                                <span style="color: {{ $isPassed ? '#047857' : '#b91c1c' }}; font-weight: bold;">{{ $pct }}</span>
+                            @else
+                                <span style="color: #94a3b8;">—</span>
+                            @endif
+                        </td>
+                        {{-- GR. --}}
+                        <td class="text-center" style="font-size: 7px;">
+                            @if($status === 'entered' && $gr)
+                                <span style="font-weight: bold; color: {{ in_array($gr, ['A1','A+','A']) ? '#047857' : (in_array($gr, ['A2','B1','B+','B']) ? '#1d4ed8' : ($gr === 'F' ? '#b91c1c' : '#92400e')) }};">{{ $gr }}</span>
+                            @elseif($status === 'absent')
+                                <span class="mark-ab" style="font-size: 6.5px;">AB</span>
+                            @else
+                                <span style="color: #94a3b8;">—</span>
+                            @endif
+                            @if($tag)
+                                <span style="font-size: 5.5px; color: #64748b; display:block;">({{ $tag }})</span>
                             @endif
                         </td>
                     @endforeach
@@ -387,7 +399,7 @@
                     </td>
                     @foreach($columns as $colKey => $col)
                         @php $stat = $column_stats[$colKey] ?? null; @endphp
-                        <td class="text-center" style="font-size: 7px; line-height: 1.1;">
+                        <td colspan="3" class="text-center" style="font-size: 7px; line-height: 1.1;">
                             Avg: {{ $stat['average'] ?? '—' }}<br>
                             <span style="color: #065f46;">{{ $stat['pass_rate'] ?? 0 }}%</span>
                         </td>

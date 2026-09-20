@@ -332,12 +332,10 @@
                                         </th>
                                     @endif
 
-                                    <!-- Subject / Optional Group Columns -->
+                                    <!-- Subject / Optional Group Columns (colspan=3 each: MARKS | % | GR.) -->
                                     @foreach($statementData['columns'] as $col)
-                                        <th class="px-3 py-2.5 text-center font-bold uppercase tracking-wider border-r border-blue-950 whitespace-nowrap {{ $col['is_optional_group'] ? 'bg-indigo-950 text-indigo-100' : '' }}" style="{{ !$col['is_optional_group'] ? 'background-color: #1e3a8a;' : '' }}">
-                                            <div class="flex items-center justify-center gap-1.5">
-                                                <span>{{ $col['title'] }}</span>
-                                            </div>
+                                        <th colspan="3" class="px-2 py-2 text-center font-bold uppercase tracking-wider border-r border-blue-950 whitespace-nowrap {{ $col['is_optional_group'] ? 'bg-indigo-950 text-indigo-100' : '' }}" style="{{ !$col['is_optional_group'] ? 'background-color: #1e3a8a;' : '' }}">
+                                            {{ $col['title'] }}
                                         </th>
                                     @endforeach
 
@@ -360,9 +358,9 @@
                                 </tr>
                                 <tr class="text-blue-100 text-[10px] text-center border-b border-blue-950" style="background-color: #172554;">
                                     @foreach($statementData['columns'] as $col)
-                                        <th class="px-2.5 py-1.5 border-r border-blue-950/60 font-semibold {{ $col['is_optional_group'] ? 'bg-indigo-900/60 text-indigo-200' : '' }}">
-                                            {{ (int) $col['maximum_marks'] }} / {{ (int) $col['pass_marks'] }}
-                                        </th>
+                                        <th class="px-1 py-1.5 border-r border-blue-950/40 font-semibold {{ $col['is_optional_group'] ? 'bg-indigo-900/60 text-indigo-200' : '' }}">MARKS</th>
+                                        <th class="px-1 py-1.5 border-r border-blue-950/40 font-semibold {{ $col['is_optional_group'] ? 'bg-indigo-900/60 text-indigo-200' : '' }}">%</th>
+                                        <th class="px-1 py-1.5 border-r border-blue-950/60 font-semibold {{ $col['is_optional_group'] ? 'bg-indigo-900/60 text-indigo-200' : '' }}">GR.</th>
                                     @endforeach
                                 </tr>
                             </thead>
@@ -391,61 +389,54 @@
                                             </td>
                                         @endif
 
-                                        <!-- Evaluated Columns (Single or Merged Optional Group) -->
+                                        <!-- Evaluated Columns: 3 sub-cells per subject (MARKS | % | GR.) -->
                                         @foreach($statementData['columns'] as $colKey => $col)
                                             @php
                                                 $colData = $st['columns'][$colKey] ?? null;
                                                 $display = $colData ? $colData['display'] : '—';
                                                 $status = $colData ? $colData['status'] : 'pending';
                                                 $isPassed = $colData ? $colData['is_passed'] : false;
-                                                $tag = $colData ? $colData['tag'] : null;
-
-                                                // Color-code tag badge
-                                                $tagClass = match(strtolower($tag ?? '')) {
-                                                    'edu' => 'bg-purple-100 text-purple-800 border-purple-200',
-                                                    'math' => 'bg-blue-100 text-blue-800 border-blue-200',
-                                                    'bio' => 'bg-emerald-100 text-emerald-800 border-emerald-200',
-                                                    'evs' => 'bg-teal-100 text-teal-800 border-teal-200',
-                                                    'isl' => 'bg-amber-100 text-amber-800 border-amber-200',
-                                                    default => 'bg-slate-100 text-slate-700 border-slate-200',
-                                                };
+                                                $tag = $colData ? ($colData['tag'] ?? null) : null;
+                                                $pct = ($colData && isset($colData['percentage'])) ? $colData['percentage'] : null;
+                                                $gr  = ($colData && !empty($colData['grade']) && $colData['grade'] !== '—') ? $colData['grade'] : null;
+                                                $isOptional = $col['is_optional_group'];
+                                                $bgCell = $isOptional ? 'bg-indigo-50/20' : '';
+                                                $gradeColorClass = $gr ? (in_array($gr, ['A1','A+','A']) ? 'text-emerald-700 font-black' : (in_array($gr, ['A2','B1','B+','B']) ? 'text-blue-700 font-black' : (in_array($gr, ['B2','C1','C+','C']) ? 'text-indigo-700 font-bold' : ($gr === 'F' ? 'text-rose-600 font-black' : 'text-amber-700 font-bold')))) : '';
                                             @endphp
-                                            <td class="px-3 py-2.5 whitespace-nowrap text-center font-semibold border-r border-slate-100 {{ $col['is_optional_group'] ? 'bg-indigo-50/20' : '' }}">
+
+                                            {{-- MARKS cell --}}
+                                            <td class="px-2 py-2 whitespace-nowrap text-center text-sm border-r border-slate-100 {{ $bgCell }}">
                                                 @if($status === 'absent')
-                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-black bg-rose-100 text-rose-700">
-                                                        AB
-                                                    </span>
-                                                    @if($tag)
-                                                        <span class="inline-block ms-1 px-1 py-0.2 rounded text-[9px] font-bold border {{ $tagClass }}">
-                                                            {{ $tag }}
-                                                        </span>
-                                                    @endif
+                                                    <span class="font-black text-rose-600">AB</span>
                                                 @elseif($status === 'entered')
-                                                    <span class="text-sm font-black {{ $isPassed ? 'text-slate-900' : 'text-rose-600' }}">
-                                                        {{ $display }}
-                                                    </span>
-                                                    @if(isset($colData['percentage']) && $colData['percentage'] !== null)
-                                                        <span class="inline-block text-[10px] font-semibold text-slate-500 ms-0.5">({{ $colData['percentage'] }}%)</span>
-                                                    @endif
-                                                    @if(!empty($colData['grade']) && $colData['grade'] !== '—')
-                                                        <span class="inline-block ms-1 px-1 py-0.2 rounded text-[9px] font-black {{ in_array($colData['grade'], ['A+', 'A']) ? 'bg-emerald-100 text-emerald-800' : (in_array($colData['grade'], ['B+', 'B']) ? 'bg-blue-100 text-blue-800' : ($colData['grade'] === 'F' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800')) }}">
-                                                            {{ $colData['grade'] }}
-                                                        </span>
-                                                    @endif
-                                                    @if($tag)
-                                                        <span class="inline-block ms-1 px-1 py-0.2 rounded text-[9px] font-bold border {{ $tagClass }}" title="Selected: {{ $colData['subject_name'] ?? $tag }}">
-                                                            {{ $tag }}
-                                                        </span>
-                                                    @endif
+                                                    <span class="font-black {{ $isPassed ? 'text-slate-900' : 'text-rose-600' }}">{{ $display }}</span>
                                                 @elseif($status === 'not_applicable')
-                                                    <span class="text-slate-300 font-normal select-none" title="Not applicable to student's stream">—</span>
+                                                    <span class="text-slate-300 select-none">—</span>
                                                 @else
-                                                    <span class="text-slate-300 font-bold">—</span>
-                                                    @if($tag)
-                                                        <span class="inline-block ms-1 px-1 py-0.2 rounded text-[9px] font-bold border {{ $tagClass }}">
-                                                            {{ $tag }}
-                                                        </span>
-                                                    @endif
+                                                    <span class="text-slate-300">—</span>
+                                                @endif
+                                            </td>
+
+                                            {{-- PERCENTAGE cell --}}
+                                            <td class="px-2 py-2 whitespace-nowrap text-center text-xs border-r border-slate-100 {{ $bgCell }}">
+                                                @if($status === 'entered' && $pct !== null)
+                                                    <span class="{{ $isPassed ? 'text-slate-700' : 'text-rose-500' }} font-semibold">{{ $pct }}</span>
+                                                @else
+                                                    <span class="text-slate-300">—</span>
+                                                @endif
+                                            </td>
+
+                                            {{-- GRADE cell --}}
+                                            <td class="px-2 py-2 whitespace-nowrap text-center text-xs border-r border-slate-100 {{ $bgCell }}">
+                                                @if($status === 'entered' && $gr)
+                                                    <span class="{{ $gradeColorClass }}">{{ $gr }}</span>
+                                                @elseif($status === 'absent')
+                                                    <span class="text-rose-400 font-bold text-[10px]">AB</span>
+                                                @else
+                                                    <span class="text-slate-300">—</span>
+                                                @endif
+                                                @if($tag)
+                                                    <span class="block text-[9px] text-slate-400 font-medium mt-0.5">{{ $tag }}</span>
                                                 @endif
                                             </td>
                                         @endforeach
