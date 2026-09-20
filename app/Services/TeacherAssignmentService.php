@@ -38,6 +38,27 @@ class TeacherAssignmentService
     }
 
     /**
+     * Bulk assign a teacher to multiple sections for a subject.
+     *
+     * @param  array  $data
+     * @param  array  $sectionIds
+     * @param  int  $assignedBy
+     * @return Collection<int, TeacherAssignment>
+     */
+    public function assignMultipleSections(array $data, array $sectionIds, int $assignedBy): Collection
+    {
+        $assignments = new Collection();
+
+        foreach ($sectionIds as $sectionId) {
+            $singleData = $data;
+            $singleData['section_id'] = $sectionId;
+            $assignments->push($this->assign($singleData, $assignedBy));
+        }
+
+        return $assignments;
+    }
+
+    /**
      * Remove an assignment.
      */
     public function remove(TeacherAssignment $assignment, int $userId): void

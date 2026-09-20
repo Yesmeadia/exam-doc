@@ -354,9 +354,6 @@
                                     <th rowspan="2" class="px-3 py-3 text-center font-bold uppercase tracking-wider border-r border-slate-900 bg-slate-900" style="background-color: #0f172a;">
                                         Grade
                                     </th>
-                                    <th rowspan="2" class="px-3.5 py-3 text-center font-bold uppercase tracking-wider border-r border-slate-900 bg-slate-900" style="background-color: #0f172a;">
-                                        Result
-                                    </th>
                                     <th rowspan="2" class="px-3 py-3 text-center font-bold uppercase tracking-wider bg-slate-900" style="background-color: #0f172a;">
                                         Rank
                                     </th>
@@ -364,7 +361,7 @@
                                 <tr class="text-blue-100 text-[10px] text-center border-b border-blue-950" style="background-color: #172554;">
                                     @foreach($statementData['columns'] as $col)
                                         <th class="px-2.5 py-1.5 border-r border-blue-950/60 font-semibold {{ $col['is_optional_group'] ? 'bg-indigo-900/60 text-indigo-200' : '' }}">
-                                            Max: {{ (int) $col['maximum_marks'] }} | Pass: {{ (int) $col['pass_marks'] }}
+                                            {{ (int) $col['maximum_marks'] }} / {{ (int) $col['pass_marks'] }}
                                         </th>
                                     @endforeach
                                 </tr>
@@ -427,6 +424,14 @@
                                                     <span class="text-sm font-black {{ $isPassed ? 'text-slate-900' : 'text-rose-600' }}">
                                                         {{ $display }}
                                                     </span>
+                                                    @if(isset($colData['percentage']) && $colData['percentage'] !== null)
+                                                        <span class="inline-block text-[10px] font-semibold text-slate-500 ms-0.5">({{ $colData['percentage'] }}%)</span>
+                                                    @endif
+                                                    @if(!empty($colData['grade']) && $colData['grade'] !== '—')
+                                                        <span class="inline-block ms-1 px-1 py-0.2 rounded text-[9px] font-black {{ in_array($colData['grade'], ['A+', 'A']) ? 'bg-emerald-100 text-emerald-800' : (in_array($colData['grade'], ['B+', 'B']) ? 'bg-blue-100 text-blue-800' : ($colData['grade'] === 'F' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800')) }}">
+                                                            {{ $colData['grade'] }}
+                                                        </span>
+                                                    @endif
                                                     @if($tag)
                                                         <span class="inline-block ms-1 px-1 py-0.2 rounded text-[9px] font-bold border {{ $tagClass }}" title="Selected: {{ $colData['subject_name'] ?? $tag }}">
                                                             {{ $tag }}
@@ -484,26 +489,6 @@
                                             @endif
                                         </td>
 
-                                        <!-- Result Badge -->
-                                        <td class="px-3.5 py-2.5 whitespace-nowrap text-center border-r border-slate-100">
-                                            @if($st['result'] === 'PASS')
-                                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 shadow-2xs">
-                                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                                                    PASS
-                                                </span>
-                                            @elseif($st['result'] === 'FAIL')
-                                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 shadow-2xs">
-                                                    <span class="w-1.5 h-1.5 rounded-full bg-rose-600"></span>
-                                                    FAIL
-                                                </span>
-                                            @else
-                                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 shadow-2xs">
-                                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                                                    PENDING
-                                                </span>
-                                            @endif
-                                        </td>
-
                                         <!-- Class Rank -->
                                         <td class="px-3 py-2.5 whitespace-nowrap text-center font-black">
                                             @if($st['rank'])
@@ -531,7 +516,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="{{ 4 + count($statementData['columns']) + 6 + (!$selectedSectionId ? 1 : 0) }}" class="px-6 py-16 text-center text-slate-400">
+                                        <td colspan="{{ 4 + count($statementData['columns']) + 5 + (!$selectedSectionId ? 1 : 0) }}" class="px-6 py-16 text-center text-slate-400">
                                             <svg class="w-10 h-10 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                             </svg>
@@ -556,7 +541,7 @@
                                                 {{ $stat['average'] ?? '—' }}
                                             </td>
                                         @endforeach
-                                        <td colspan="6" class="px-4 py-3 text-center text-xs font-bold text-slate-700 bg-slate-100">
+                                        <td colspan="5" class="px-4 py-3 text-center text-xs font-bold text-slate-700 bg-slate-100">
                                             Class Overall Average: <span class="font-black text-indigo-700 text-sm ms-1">{{ $statementData['analytics']['average_percentage'] }}%</span>
                                         </td>
                                     </tr>
@@ -572,7 +557,7 @@
                                                 {{ $stat['pass_rate'] ?? 0 }}%
                                             </td>
                                         @endforeach
-                                        <td colspan="6" class="px-4 py-2.5 text-center text-xs font-bold text-emerald-700 bg-slate-50">
+                                        <td colspan="5" class="px-4 py-2.5 text-center text-xs font-bold text-emerald-700 bg-slate-50">
                                             Class Pass Rate: <span class="font-black text-sm ms-1">{{ $statementData['analytics']['pass_rate'] }}%</span>
                                         </td>
                                     </tr>

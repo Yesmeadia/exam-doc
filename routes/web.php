@@ -118,6 +118,7 @@ Route::middleware(['auth', 'role:super-admin'])->prefix('admin/results')->name('
     Route::post('sections/{section}/assign-subjects', [SectionController::class, 'assignSubjects'])->name('sections.assign-subjects');
 
     // Subjects (Only used methods: index, create, store, edit, update, destroy)
+    Route::patch('subjects/{subject}/marks', [SubjectController::class, 'updateMarks'])->name('subjects.update-marks');
     Route::resource('subjects', SubjectController::class)->except(['show']);
 
     // Students & Allocations (Only used methods: import, template, preview, commit, subjects, index, create, store, edit, update, destroy)

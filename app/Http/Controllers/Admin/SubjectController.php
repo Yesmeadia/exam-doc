@@ -17,16 +17,55 @@ class SubjectController extends Controller
     public function index(Request $request): View
     {
         $academicYearId = $request->query('academic_year_id');
+        $classId = $request->query('class_id');
+        $search = $request->query('search');
+
         $academicYears = AcademicYear::orderBy('id', 'desc')->get();
         $classes = SchoolClass::where('status', 'active')->orderBy('display_order')->get();
 
         $subjects = Subject::with(['academicYear', 'classes'])
             ->when($academicYearId, fn ($q) => $q->where('academic_year_id', $academicYearId))
+            ->when($classId, function ($q) use ($classId) {
+                if ($classId === 'higher_secondary') {
+                    $q->whereHas('classes', function ($cq) {
+                        $cq->where('name', 'like', '%11%')
+                            ->orWhere('name', 'like', '%12%')
+                            ->orWhere('name', 'like', '%xi%')
+                            ->orWhere('name', 'like', '%xii%');
+                    });
+                } else {
+                    $q->whereHas('classes', fn ($cq) => $cq->where('classes.id', $classId));
+                }
+            })
+            ->when($search, fn ($q) => $q->where(fn ($sq) => $sq->where('name', 'like', "%{$search}%")->orWhere('code', 'like', "%{$search}%")))
             ->orderBy('display_order')
             ->orderBy('name')
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
 
-        return view('results.admin.subjects.index', compact('subjects', 'academicYears', 'classes', 'academicYearId'));
+        return view('results.admin.subjects.index', compact(
+            'subjects',
+            'academicYears',
+            'classes',
+            'academicYearId',
+            'classId',
+            'search'
+        ));
+    }
+
+    /**
+     * Quickly update maximum and pass marks for a subject.
+     */
+    public function updateMarks(Request $request, Subject $subject): RedirectResponse
+    {
+        $validated = $request->validate([
+            'maximum_marks' => ['required', 'numeric', 'min:1', 'max:1000'],
+            'pass_marks' => ['required', 'numeric', 'min:0', 'lte:maximum_marks'],
+        ]);
+
+        $subject->update($validated);
+
+        return redirect()->back()->with('success', "Marks updated for '{$subject->name}': Max Marks = {$subject->maximum_marks}, Pass Marks = {$subject->pass_marks}.");
     }
 
     public function create(): View

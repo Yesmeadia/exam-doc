@@ -308,7 +308,6 @@
                 <th rowspan="2" style="width: 35px;" class="th-result">Max</th>
                 <th rowspan="2" style="width: 42px;" class="th-result">Pct %</th>
                 <th rowspan="2" style="width: 30px;" class="th-result">Grd</th>
-                <th rowspan="2" style="width: 40px;" class="th-result">Result</th>
                 <th rowspan="2" style="width: 30px;" class="th-result">Rank</th>
             </tr>
             <tr>
@@ -345,6 +344,9 @@
                                 <span class="{{ $isPassed ? 'mark-pass' : 'mark-fail' }}">
                                     {{ $display }}
                                 </span>
+                                @if(isset($colData['percentage']) && $colData['percentage'] !== null)
+                                    <span style="font-size: 6px; color: #64748b;">({{ $colData['percentage'] }}%@if(!empty($colData['grade']) && $colData['grade'] !== '—')<b style="color: #334155; margin-left: 1px;">{{ $colData['grade'] }}</b>@endif)</span>
+                                @endif
                                 @if($tag)
                                     <span style="font-size: 6.5px; color: #64748b;">({{ $tag }})</span>
                                 @endif
@@ -365,22 +367,13 @@
                         {{ $st['has_appeared'] ? $st['percentage'] . '%' : '—' }}
                     </td>
                     <td class="text-center font-bold">{{ $st['has_appeared'] ? $st['grade'] : '—' }}</td>
-                    <td class="text-center">
-                        @if($st['result'] === 'PASS')
-                            <span class="badge-pass">PASS</span>
-                        @elseif($st['result'] === 'FAIL')
-                            <span class="badge-fail">FAIL</span>
-                        @else
-                            <span class="badge-pending">PEND</span>
-                        @endif
-                    </td>
                     <td class="text-center font-bold">
                         {{ $st['rank'] ? '#' . $st['rank'] : '—' }}
                     </td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="{{ 4 + count($columns) + 6 + (!$section ? 1 : 0) }}" class="text-center" style="padding: 15px; color: #94a3b8;">
+                    <td colspan="{{ 4 + count($columns) + 5 + (!$section ? 1 : 0) }}" class="text-center" style="padding: 15px; color: #94a3b8;">
                         No enrolled students found for the selected examination and class/section.
                     </td>
                 </tr>
@@ -399,7 +392,7 @@
                             <span style="color: #065f46;">{{ $stat['pass_rate'] ?? 0 }}%</span>
                         </td>
                     @endforeach
-                    <td colspan="6" class="text-center" style="font-size: 7.5px;">
+                    <td colspan="5" class="text-center" style="font-size: 7.5px;">
                         Class Pass Rate: {{ $analytics['pass_rate'] }}% | Class Avg: {{ $analytics['average_percentage'] }}%
                     </td>
                 </tr>

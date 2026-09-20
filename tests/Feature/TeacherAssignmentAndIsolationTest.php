@@ -88,6 +88,29 @@ class TeacherAssignmentAndIsolationTest extends TestCase
         ]);
     }
 
+    public function test_super_admin_can_assign_teacher_to_multiple_sections(): void
+    {
+        $response = $this->actingAs($this->superAdmin)->post(route('admin.assignments.store'), [
+            'teacher_id' => $this->teacherA->id,
+            'academic_year_id' => $this->academicYear->id,
+            'class_id' => $this->class->id,
+            'section_ids' => [$this->sectionA->id, $this->sectionB->id],
+            'subject_id' => $this->math->id,
+        ]);
+
+        $response->assertRedirect(route('admin.assignments.index'));
+        $this->assertDatabaseHas('teacher_assignments', [
+            'teacher_id' => $this->teacherA->id,
+            'subject_id' => $this->math->id,
+            'section_id' => $this->sectionA->id,
+        ]);
+        $this->assertDatabaseHas('teacher_assignments', [
+            'teacher_id' => $this->teacherA->id,
+            'subject_id' => $this->math->id,
+            'section_id' => $this->sectionB->id,
+        ]);
+    }
+
     public function test_teacher_can_access_own_assignment_mark_entry(): void
     {
         $assignmentA = TeacherAssignment::create([

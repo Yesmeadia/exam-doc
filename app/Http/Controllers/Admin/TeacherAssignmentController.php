@@ -57,30 +57,84 @@ class TeacherAssignmentController extends Controller
     {
         $academicYears = AcademicYear::orderBy('id', 'desc')->get();
         $teachers = User::role('teacher')->where('status', 'active')->orderBy('name')->get();
-        $classes = SchoolClass::with('sections')->where('status', 'active')->orderBy('display_order')->get();
-        $subjects = Subject::with('classes')->where('status', 'active')->orderBy('display_order')->orderBy('name')->get();
+        $classes = SchoolClass::with([
+            'sections' => fn ($q) => $q->where('status', 'active')->orderBy('name'),
+            'sections.subjects' => fn ($q) => $q->where('subjects.status', 'active')->orderBy('display_order')->orderBy('name'),
+            'subjects' => fn ($q) => $q->where('subjects.status', 'active')->orderBy('display_order')->orderBy('name'),
+        ])->where('status', 'active')->orderBy('display_order')->get();
 
-        return view('results.admin.assignments.create', compact('academicYears', 'teachers', 'classes', 'subjects'));
+        $classesPayload = $classes->map(function ($c) {
+            return [
+                'id' => $c->id,
+                'name' => $c->name,
+                'code' => $c->code,
+                'subjects' => $c->subjects->map(fn ($s) => [
+                    'id' => $s->id,
+                    'name' => $s->name,
+                    'code' => $s->code,
+                    'maximum_marks' => (float) $s->maximum_marks,
+                    'is_optional' => (bool) ($s->pivot->is_elective ?? false),
+                ])->values(),
+                'sections' => $c->sections->map(function ($sec) use ($c) {
+                    $hasCustomSubjects = $sec->subjects->isNotEmpty();
+                    $assignedSubjects = $hasCustomSubjects ? $sec->subjects : $c->subjects;
+
+                    return [
+                        'id' => $sec->id,
+                        'name' => $sec->name,
+                        'has_custom_subjects' => $hasCustomSubjects,
+                        'subjects' => $assignedSubjects->map(fn ($s) => [
+                            'id' => $s->id,
+                            'name' => $s->name,
+                            'code' => $s->code,
+                            'maximum_marks' => (float) $s->maximum_marks,
+                            'is_optional' => (bool) ($s->pivot->is_optional ?? $s->pivot->is_elective ?? false),
+                        ])->values(),
+                    ];
+                })->values(),
+            ];
+        });
+
+        return view('results.admin.assignments.create', compact(
+            'academicYears',
+            'teachers',
+            'classes',
+            'classesPayload'
+        ));
     }
 
     public function store(StoreTeacherAssignmentRequest $request): RedirectResponse
     {
-        $assignment = $this->assignmentService->assign($request->validated(), Auth::id());
-        $assignment->load(['teacher', 'academicYear', 'schoolClass', 'section', 'subject']);
+        $data = $request->validated();
+        $sectionIds = $request->input('section_ids', []);
+        if (empty($sectionIds) && $request->filled('section_id')) {
+            $sectionIds = [(int) $request->input('section_id')];
+        }
+
+        $assignments = $this->assignmentService->assignMultipleSections($data, $sectionIds, Auth::id());
+        $firstAssignment = $assignments->first();
+        if ($firstAssignment) {
+            $firstAssignment->load(['teacher', 'academicYear', 'schoolClass', 'section', 'subject']);
+        }
 
         $emailSent = false;
-        if ($assignment->teacher && $assignment->teacher->email) {
+        if ($firstAssignment && $firstAssignment->teacher && $firstAssignment->teacher->email) {
             try {
-                $assignment->teacher->notify(new TeacherAssignmentNotification($assignment));
+                $firstAssignment->teacher->notify(new TeacherAssignmentNotification($firstAssignment));
                 $emailSent = true;
             } catch (\Throwable $e) {
-                Log::error("Teacher assignment notification email failed for {$assignment->teacher->email}: " . $e->getMessage());
+                Log::error("Teacher assignment notification email failed for {$firstAssignment->teacher->email}: " . $e->getMessage());
             }
         }
 
-        $message = 'Teacher assigned successfully.';
+        $count = $assignments->count();
+        $sectionNames = $assignments->pluck('section.name')->filter()->join(', ');
+        $subjectName = $firstAssignment?->subject?->name ?? 'selected subject';
+        $teacherName = $firstAssignment?->teacher?->name ?? 'Teacher';
+
+        $message = "Assigned {$teacherName} to {$count} section(s)" . ($sectionNames ? " ({$sectionNames})" : '') . " for {$subjectName} successfully.";
         if ($emailSent) {
-            $message .= " Assignment notification email dispatched to {$assignment->teacher->email}.";
+            $message .= " Assignment notification email dispatched to {$firstAssignment->teacher->email}.";
         }
 
         return redirect()->route('admin.assignments.index')->with('success', $message);

@@ -134,9 +134,11 @@ class ClassWiseStatementService
      * Fetch relevant subjects for the class/section statement.
      *
      * @param \Illuminate\Database\Eloquent\Collection<int, Student> $students
+     * @return Collection<int, Subject>
      */
     protected function fetchStatementSubjects(SchoolClass $class, ?Section $section, Exam $exam, \Illuminate\Database\Eloquent\Collection $students): Collection
     {
+        /** @var Collection<int, Subject> $subjects */
         $subjects = $class->subjects()
             ->where('subjects.status', 'active')
             ->orderBy('subjects.display_order', 'asc')
@@ -175,75 +177,84 @@ class ClassWiseStatementService
             }
         }
 
-        // When a specific section is set, pluck ONLY the subjects created/assigned for that section
+        // When a specific section is set, filter and isolate section-specific subjects
         if ($section) {
-            $studentIds = $students->pluck('id')->toArray();
+            $subjects = $this->filterSubjectsForSection($class, $section, $exam, $students, $subjects);
+        }
 
-            // 0. Pluck directly assigned subjects for this section
-            $assignedSectionSubjectIds = $section->subjects()
-                ->where('subjects.status', 'active')
-                ->pluck('subjects.id')
-                ->toArray();
+        return $subjects;
+    }
 
-            // 1. Pluck active subjects assigned in TeacherAssignment for this class and section
-            $teacherSubjectIds = TeacherAssignment::where('class_id', $class->id)
-                ->where('section_id', $section->id)
+    /**
+     * Filter and supplement subjects for a specific section and stream.
+     *
+     * @param \Illuminate\Database\Eloquent\Collection<int, Student> $students
+     * @param Collection<int, Subject> $subjects
+     * @return Collection<int, Subject>
+     */
+    protected function filterSubjectsForSection(SchoolClass $class, Section $section, Exam $exam, \Illuminate\Database\Eloquent\Collection $students, Collection $subjects): Collection
+    {
+        $studentIds = $students->pluck('id')->toArray();
+
+        // 0. Directly assigned subjects for this section
+        $assignedSectionSubjectIds = $section->subjects()
+            ->where('subjects.status', 'active')
+            ->pluck('subjects.id')
+            ->toArray();
+
+        // 1. Subjects assigned in TeacherAssignment
+        $teacherSubjectIds = TeacherAssignment::where('class_id', $class->id)
+            ->where('section_id', $section->id)
+            ->where('status', 'active')
+            ->whereHas('subject', fn ($q) => $q->where('status', 'active'))
+            ->pluck('subject_id')
+            ->toArray();
+
+        // 2. Individually allocated subjects
+        $allocatedSubjectIds = !empty($studentIds)
+            ? StudentSubject::whereIn('student_id', $studentIds)
                 ->where('status', 'active')
                 ->whereHas('subject', fn ($q) => $q->where('status', 'active'))
                 ->pluck('subject_id')
-                ->toArray();
+                ->toArray()
+            : [];
 
-            // 2. Pluck active subjects individually allocated to students in this section
-            $allocatedSubjectIds = !empty($studentIds)
-                ? StudentSubject::whereIn('student_id', $studentIds)
+        // 3. Subjects where marks are recorded
+        $markSubjectIds = !empty($studentIds)
+            ? Mark::where('exam_id', $exam->id)
+                ->whereIn('student_id', $studentIds)
+                ->whereHas('subject', fn ($q) => $q->where('status', 'active'))
+                ->pluck('subject_id')
+                ->toArray()
+            : [];
+
+        $sectionSubjectIds = array_unique(array_filter(array_merge($assignedSectionSubjectIds, $teacherSubjectIds, $allocatedSubjectIds, $markSubjectIds)));
+
+        if (!empty($sectionSubjectIds)) {
+            $missingIds = array_diff($sectionSubjectIds, $subjects->pluck('id')->toArray());
+            if (!empty($missingIds)) {
+                $missingSubjects = Subject::whereIn('id', $missingIds)
                     ->where('status', 'active')
-                    ->whereHas('subject', fn ($q) => $q->where('status', 'active'))
-                    ->pluck('subject_id')
-                    ->toArray()
-                : [];
-
-            // 3. Pluck active subjects where marks are recorded for this exam & section
-            $markSubjectIds = !empty($studentIds)
-                ? Mark::where('exam_id', $exam->id)
-                    ->whereIn('student_id', $studentIds)
-                    ->whereHas('subject', fn ($q) => $q->where('status', 'active'))
-                    ->pluck('subject_id')
-                    ->toArray()
-                : [];
-
-            $sectionSubjectIds = array_unique(array_filter(array_merge($assignedSectionSubjectIds, $teacherSubjectIds, $allocatedSubjectIds, $markSubjectIds)));
-
-            if (!empty($sectionSubjectIds)) {
-                // Ensure any section-created subject is present in the collection
-                $missingIds = array_diff($sectionSubjectIds, $subjects->pluck('id')->toArray());
-                if (!empty($missingIds)) {
-                    $missingSubjects = Subject::whereIn('id', $missingIds)
-                        ->where('status', 'active')
-                        ->get();
-                    $subjects = $subjects->concat($missingSubjects);
-                }
-                $subjects = $subjects->whereIn('id', $sectionSubjectIds)->sortBy('display_order')->values();
+                    ->get();
+                $subjects = $subjects->concat($missingSubjects);
             }
+            $subjects = $subjects->whereIn('id', $sectionSubjectIds)->sortBy('display_order')->values();
+        }
 
-            // Stream-specific filtering for Higher Secondary (11th & 12th)
-            if ($class->allowsIndividualSubjectAllocation()) {
-                $sectionName = strtolower(trim((string) $section->name));
-                $isHumanities = str_contains($sectionName, 'humanities') || str_contains($sectionName, 'arts');
-                $isScience = str_contains($sectionName, 'science');
+        // Stream-specific filtering for Higher Secondary (11th & 12th)
+        if ($class->allowsIndividualSubjectAllocation()) {
+            $sectionName = strtolower(trim((string) $section->name));
+            $isHumanities = str_contains($sectionName, 'humanities') || str_contains($sectionName, 'arts');
+            $isScience = str_contains($sectionName, 'science');
 
-                if ($isHumanities) {
-                    // Strictly exclude Science-stream subjects (Biology, Physics, Chemistry)
-                    $subjects = $subjects->filter(function ($sub) {
-                        $subName = strtolower($sub->name);
-                        return !preg_match('/\b(biology|bio|physics|chemistry)\b/i', $subName);
-                    })->values();
-                } elseif ($isScience) {
-                    // Strictly exclude Humanities-stream subjects (History, Political Science, Civics, Education)
-                    $subjects = $subjects->filter(function ($sub) {
-                        $subName = strtolower($sub->name);
-                        return !preg_match('/\b(history|political science|civics|education)\b/i', $subName);
-                    })->values();
-                }
+            if ($isHumanities) {
+                $subjects = $subjects->filter(function ($sub) {
+                    return !preg_match('/\b(biology|bio|physics|chemistry)\b/i', strtolower($sub->name));
+                })->values();
+            } elseif ($isScience) {
+                $subjects = $subjects->filter(function ($sub) {
+                    return !preg_match('/\b(history|political science|civics|education)\b/i', strtolower($sub->name));
+                })->values();
             }
         }
 
@@ -599,11 +610,15 @@ class ClassWiseStatementService
             $maxMarks = (float) ($subBio?->maximum_marks ?? $subMath?->maximum_marks ?? 100);
             $passMarks = (float) ($subBio?->pass_marks ?? $subMath?->pass_marks ?? 33);
 
+            $subHeader = ($subBio && $subMath && (int) $subBio->maximum_marks !== (int) $subMath->maximum_marks)
+                ? ((int) $subBio->maximum_marks . ' | ' . (int) $subMath->maximum_marks)
+                : (((int) $maxMarks) . '/' . ((int) $passMarks));
+
             $cols['opt_science_bio_math'] = [
                 'key' => 'opt_science_bio_math',
                 'title' => $title,
                 'short_title' => 'Biology / Math',
-                'sub_header' => ((int) $maxMarks) . '/' . ((int) $passMarks),
+                'sub_header' => $subHeader,
                 'is_optional_group' => true,
                 'stream' => 'science',
                 'maximum_marks' => $maxMarks,
@@ -641,11 +656,15 @@ class ClassWiseStatementService
             $maxMarks = (float) ($subEvs?->maximum_marks ?? $subIslamic?->maximum_marks ?? 100);
             $passMarks = (float) ($subEvs?->pass_marks ?? $subIslamic?->pass_marks ?? 33);
 
+            $subHeader = ($subEvs && $subIslamic && (int) $subEvs->maximum_marks !== (int) $subIslamic->maximum_marks)
+                ? ((int) $subEvs->maximum_marks . ' | ' . (int) $subIslamic->maximum_marks)
+                : (((int) $maxMarks) . '/' . ((int) $passMarks));
+
             $cols['opt_humanities_evs_islamic'] = [
                 'key' => 'opt_humanities_evs_islamic',
                 'title' => $title,
                 'short_title' => 'EVS / Islamic',
-                'sub_header' => ((int) $maxMarks) . '/' . ((int) $passMarks),
+                'sub_header' => $subHeader,
                 'is_optional_group' => true,
                 'stream' => null,
                 'maximum_marks' => $maxMarks,
@@ -730,12 +749,16 @@ class ClassWiseStatementService
 
             if ($numericMark !== null) {
                 $isPassed = ($numericMark >= $passMarks);
+                $percentage = $maxMarks > 0 ? round(($numericMark / $maxMarks) * 100, 1) : null;
+                $grade = $percentage !== null ? $this->resultCalculationService->getGradeFromPercentage($percentage) : '—';
                 return [
                     'is_applicable' => true,
                     'display' => (string) $numericMark,
                     'tag' => null,
                     'marks' => $numericMark,
                     'max_marks' => $maxMarks,
+                    'percentage' => $percentage,
+                    'grade' => $grade,
                     'is_absent' => false,
                     'is_passed' => $isPassed,
                     'status' => 'entered',
@@ -858,12 +881,16 @@ class ClassWiseStatementService
 
         if ($numericMark !== null) {
             $isPassed = ($numericMark >= $subPassMarks);
+            $percentage = $subMaxMarks > 0 ? round(($numericMark / $subMaxMarks) * 100, 1) : null;
+            $grade = $percentage !== null ? $this->resultCalculationService->getGradeFromPercentage($percentage) : '—';
             return [
                 'is_applicable' => true,
                 'display' => (string) $numericMark,
                 'tag' => $tag,
                 'marks' => $numericMark,
                 'max_marks' => $subMaxMarks,
+                'percentage' => $percentage,
+                'grade' => $grade,
                 'is_absent' => false,
                 'is_passed' => $isPassed,
                 'status' => 'entered',
@@ -961,9 +988,9 @@ class ClassWiseStatementService
 
         // Columns: Roll No (A), Student ID (B), Student Name (C), Section (D)
         // Then statement columns: Col 5, 6, 7...
-        // End cols: Total Marks, Max Marks, Percentage, Grade, Result, Rank
+        // End cols: Total Marks, Max Marks, Percentage, Grade, Rank
         $numCols = count($data['columns']);
-        $totalColsCount = 4 + $numCols + 6;
+        $totalColsCount = 4 + $numCols + 5;
         $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($totalColsCount);
 
         // 1. Institutional Title
@@ -1022,7 +1049,7 @@ class ClassWiseStatementService
         foreach ($data['columns'] as $col) {
             $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol);
             $sheet->setCellValue($colLetter . $headerRow1, $col['title']);
-            $sheet->setCellValue($colLetter . $headerRow2, '[Max: ' . $col['maximum_marks'] . ' | Pass: ' . $col['pass_marks'] . ']');
+            $sheet->setCellValue($colLetter . $headerRow2, ((int) $col['maximum_marks']) . ' / ' . ((int) $col['pass_marks']));
             $currCol++;
         }
 
@@ -1042,10 +1069,6 @@ class ClassWiseStatementService
         $gradeCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol++);
         $sheet->setCellValue($gradeCol . $headerRow1, 'Grade');
         $sheet->mergeCells("{$gradeCol}{$headerRow1}:{$gradeCol}{$headerRow2}");
-
-        $resCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol++);
-        $sheet->setCellValue($resCol . $headerRow1, 'Result');
-        $sheet->mergeCells("{$resCol}{$headerRow1}:{$resCol}{$headerRow2}");
 
         $rankCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($currCol++);
         $sheet->setCellValue($rankCol . $headerRow1, 'Rank');
@@ -1078,8 +1101,15 @@ class ClassWiseStatementService
                 $val = '—';
                 if ($colData) {
                     $val = $colData['display'];
+                    if (!empty($colData['percentage']) && $colData['status'] === 'entered') {
+                        $val .= ' (' . $colData['percentage'] . '%';
+                        if (!empty($colData['grade']) && $colData['grade'] !== '—') {
+                            $val .= ' ' . $colData['grade'];
+                        }
+                        $val .= ')';
+                    }
                     if (!empty($colData['tag']) && $colData['status'] !== 'not_applicable' && $colData['display'] !== '—') {
-                        $val .= ' (' . $colData['tag'] . ')';
+                        $val .= ' [' . $colData['tag'] . ']';
                     }
                 }
 
@@ -1092,7 +1122,6 @@ class ClassWiseStatementService
             $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx++) . $currentRow, $st['total_max']);
             $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx++) . $currentRow, $st['has_appeared'] ? $st['percentage'] . '%' : '—');
             $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx++) . $currentRow, $st['has_appeared'] ? $st['grade'] : '—');
-            $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx++) . $currentRow, $st['result']);
             $sheet->setCellValue(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($colIdx++) . $currentRow, $st['rank'] ?? '—');
 
             // Alignments
